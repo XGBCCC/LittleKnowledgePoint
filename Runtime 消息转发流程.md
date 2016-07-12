@@ -17,7 +17,8 @@
 3. 显然我们的`[User]`类中并没有相关的print方法
 4. 那么，我们要保证  **1.在调用print方法的时候app不会崩溃  2.并且，在调用的时候，可以正确输出相关内容。这个时候，怎么办？**
 5. 消息转发：简单来说，当我们用一个实例调用它并不存在的一个方法的时候，就会走消息转发流程。例如。我们调用`[User]`的`[printUserName]`方法。`[User]`中其实并不存在这个方法，这个时候，就会走消息转发了，消息转发具体涉及到下面几个方法：`[resolveInstanceMethod]`,`[forwardingTargetForSelector]`,`[methodSignatureForSelector]`,`[forwardInvocation]`
-6. 这几个方法的流程大致如下图：![消息转发流程图](http://7xjcm6.com1.z0.glb.clouddn.com/%E6%B6%88%E6%81%AF%E8%BD%AC%E5%8F%91%E6%B5%81%E7%A8%8B%E5%9B%BE.png)
+6. 这几个方法的流程大致如下图(不知为何，图片显示不全，大家可直接点击链接查看：http://7xjcm6.com1.z0.glb.clouddn.com/%E6%B6%88%E6%81%AF%E8%BD%AC%E5%8F%91%E6%B5%81%E7%A8%8B%E5%9B%BE.png )：
+![消息转发流程图](http://7xjcm6.com1.z0.glb.clouddn.com/%E6%B6%88%E6%81%AF%E8%BD%AC%E5%8F%91%E6%B5%81%E7%A8%8B%E5%9B%BE.png)
 		
 7. 我把`[User]`类的.m文件内容直接放在下面了，大家有兴趣的话可以看看
 8. Demo地址：https://github.com/XGBCCC/RuntimeMessageForwardingDemo
