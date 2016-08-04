@@ -32,5 +32,19 @@
 	1. 默认情况下，我们弹出一个ViewController，然后我们点击页面的其它地方popover就会自动隐藏，这时，我们可以设置pop的passthroughViews，这些view点击的时候，不会隐藏popover。这里还有个小问题，一旦我们点击了工具栏的一个按钮，工具栏上的其他按钮同样会被自动添加的 passthrough view 中，用户还可以去点击不同的按钮，这里有个比较旁门左道的实现，停止 0.1s，用我们自己的设置去覆盖 runtime 进行的设置，如：
 	![](http://7xwb99.com1.z0.glb.clouddn.com/2016-07-22-14691784188662.jpg)
 	2. 默认的popover是弹出一小块，我们还可以设置popover出来的样式［例如全屏弹出,alter弹出］：首先设置vc.presentationController的delegate，然后实现adaptivePresentationStyleForPresentationController：返回你想要的样式即可
+### UIUndoManager
+1. 要弹出类似于系统的长按Copy，可以这样
+
+```Objective-C
+//1.创建个longPress手势
+//2.使用UImenuItem
+let m = UIMenuController.sharedMenuController()
+m.setTargetRect(self.bounds, inView: self)
+let mi1 = UIMenuItem(title: self.undoer.undoMenuItemTitle, action:#selector(undo))
+let mi2 = UIMenuItem(title: self.undoer.redoMenuItemTitle, action:#selector(redo))
+m.menuItems = [mi1, mi2]
+m.setMenuVisible(true, animated:true)
+```
+	
 
 
