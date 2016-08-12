@@ -1,4 +1,5 @@
 # Runtime
+### 以下内容来源均为：http://xiongzenghuidegithub.github.io 的笔记
 1. 实例变量的内存布局在程序`[编译期间]`就已经确定了，新增或减少一个实例变量，就必须要`[重新编译]`程序代码，让编译器重新计算所有实例变量的内存布局
 2. Cat对象->_firstName的实际作用
 	1. 首先找到Cat对象所在的内存的起始地址
@@ -202,6 +203,94 @@
 		2. `[找到第一响应者的View——super view——rootView——控制器View——控制器——window]`
 23. 重写`[pintInside:withEvent:]`返回NO，则表示不参与事件传递，即：直接不让自己成为响应者
 24. 将UIView的点击事件传递给其他View，可以直接重写`[hitTest:withEvent:]`
-25. 
+25. `[objc_msgSend(target,@selector(test))]`做的事情
+	1. 将组装好的消息发送给target(对象或类)
+	2. 然后找到接收到到消息的target对应的objc_class结构体实例，从中查询消息SEL对应的objc_method实例
+		1. 对象方法，查询`[类本身]`的objc_class结构体实例
+		2. 类方法，查询`[Meta]`元类的objc_class结构体实例
+	3. 查询objc_method实例的过程
+		1. 从`[method_cache]`种查询SEL是否存在对应的objc_method实例
+			1. 如果有，直接使用找到`[obj_method]`实例，进入流程(4)
+			2. 如果没有，进入流程2
+		2. 获取找到的`[objc_class]`结构体实例的`[method_list]`方法列表
+		3. 然后遍历找到的`[method_list]`中的所有`[objc_method]`实例，对比SEL值是否与消息中的SEL值一致
+			1. 如果一致，表示找到了消息SEL对应个的函数实现objc_method实例，然后使用消息SEL作为key，找到的objc_method实例作为value缓存起来
+			2. 如果都没有找到，进入父类的objc_class体实例中查找，流程走到2
+		4. 找到了消息SEL对应的objc_method实例了
+			1. 通过objc_method实例->IMP找到存放最终要调用的函数实现的寻访地址
+			2. 继而载入找到的函数地址，那么就执行了函数调用
+26. 还有三个和objc_msgSend()类似的函数
+	1. `[objc_msgSend_stret(id self, SEL op, ...)]`:如果方法有结构体返回值，则用这个来发送
+	2. `[void objc_msgSend_fpret(id self, SEL op, ...)]`:如果方法返回float，则用这个来发送
+	3. `[objc_msgSendSuper(struct objc_super *super, SEL op, ...)]`：使用当前类的父类来发送
+27. 每个OC函数，最终都会变已成为一个C函数，并使用一个objc_method的实例在运行时保存在内存中。
+	1. 如果是实例方法，则保存在当前类对应的`[objc_class实例]`
+	2. 如果是类方法，则保存在当前类对应的`[Meta元类]`对应的objc_class实例
+28. 一个`[OC函数]`最终其实是通过`[type encoding(一串有规律的字符串，类型编码)]`与最终`[编译生成的C函数]`对应起来
+29. 我们经常写一个Objective-C函数，它的结构是这样分配的(通过这样对数据类型编码，也正是为了给一个OC函数进行编码做的铺垫。那么给一个OC函数做编码的好处是，能够快速找到对应的c函数实现，而不必进行全局的遍历查找。):
+![](http://7xwb99.com1.z0.glb.clouddn.com/2016-08-12-14709821517115.jpg)
+30. 消息转发
+![](http://7xwb99.com1.z0.glb.clouddn.com/2016-08-12-14709822825644.jpg)
+	1. `[CoreData]`中的`[NSManagedObject]`的属性，全部都是@dynamc，不由编译器生成getter＋setter，而是在运行时使用消息转发机制将自己实现的函数添加到objc_class实例中
+31. 实际上当消息转发流程走完后，还有一步，如果系统没有找到响应的方法，则会走当前对象的`[doesNotRecognizeSelector:]`函数，`[doesNotRecognizeSelector:]`函数默认实现中做了两件事
+	1. 结束消息转发过程
+	2. 抛出NSInvalidArgumentException异常
+		1. 我们可以利用这个特性，例如：提醒子类必须要重写父类的某一些函数，否则让程序崩溃退出执行，提醒开发者要实现完整:
+		
+		```
+		- (void)abstractMethod {
+    //方法一、使用NSObject基类提供的停止消息转发并崩溃
+    [self doesNotRecognizeSelector:_cmd];
+	   //方法二、直接抛出一个异常
+		//    @throw [NSException exceptionWithName:@"not implement method" reason:@"必须要重写这个函数" userInfo:nil];
+		}
 
+		```
+32. 如何拦截OC函数实现的方法
+	1. 创建一个目标类的子类，然后重写要拦截的函数
+	2. 使用`[class_addMethod()]`,`[class_replaceMethod()]`,`[method_exchangeImplementains()]`交换两个objc_method实现的SEL指向
+33. `[Person *person = [Person new];]` *代表指针，OC的对象，都放在堆上
+34. `[id person = [Person new]];`  因为id本身就是个指针类型，所有person的类型就是指针变量，不需要再使用*了
+35. 类在运行时中的载体
+
+```
+//一个OC类对象 最终运行时的内存载体
+sturct objc_object{
+	Class isa OBJC_ISA_AVAILABILITY;   //指向了objc_class(也就是Objective-C对象所属的类)
+}
+
+struct objc_class {
+    Class isa  OBJC_ISA_AVAILABILITY;
+#if !__OBJC2__
+    Class super_class                                        OBJC2_UNAVAILABLE;
+    const char *name                                         OBJC2_UNAVAILABLE;
+    long version                                             OBJC2_UNAVAILABLE;
+    long info                                                OBJC2_UNAVAILABLE;
+    long instance_size                                       OBJC2_UNAVAILABLE;
+    struct objc_ivar_list *ivars                             OBJC2_UNAVAILABLE;
+    struct objc_method_list **methodLists                    OBJC2_UNAVAILABLE;
+    struct objc_cache *cache                                 OBJC2_UNAVAILABLE;
+    struct objc_protocol_list *protocols                     OBJC2_UNAVAILABLE;
+#endif
+} OBJC2_UNAVAILABLE;
+
+```
+
+36. OC的代码，在编译期间会将OC代码自动转换为C的代码，并在程序运行起降，创建出对应的C结构体实例，即：objc_class
+37. 实例－>isa->obj_class->isa->meta Class->isa->NSObject
+38. 我们写的一个Objective－C实际上包含了两部分`[类本身]`,`[元类]` 
+39. 如何判断两个对象的类型[]是否一致？＝> `[[person class] == [Person class]]` **类簇不能这么比，只能用isKindOf**
+	1. 因为`[person class]` 指向了 objc_object->objc_class ,`[person class]`也是指向了objc_object->objc_class 并且，objc_class 是个单例。
+40. 当一个类具有很多类型的init初始化方法时，需要提供一个全能的最大init函数入口，来确保所有的默认的实例变量都能被初始化
+41. `[description]`,重写这个方法，我们就可以在lldb调试的时候，使用po来输出相应信息
+42. `[debugDescription]`:其实和description差不多，只不过是只有在lldb debug调试时候才有用。
+43. 错误处理
+	1. 使用NSError
+	2. 使用枚举，定义好可能的错误业务Code
+	3. 使用try catch finally
+44. 对象Copy
+	1. 实现NSCopying协议方法`[copyWithZone]`
+45. delegate与block
+	1. delegate方便调试，但是需要走消息查询，没有block直接指向函数实现速度快
+	2. block会造成不易调试，产生retain cycle等。
 
