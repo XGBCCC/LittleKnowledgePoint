@@ -293,4 +293,205 @@ struct objc_class {
 45. delegate与block
 	1. delegate方便调试，但是需要走消息查询，没有block直接指向函数实现速度快
 	2. block会造成不易调试，产生retain cycle等。
+46. ARC
+ 
+```
+//1\. 强引用类型，会让其retainCount + 1
+id __strong obj = [NSObject new];
+
+//2\. 弱引用类型，不会让其retainCount + 1，不能够持有一个对象
+id __weak obj = [NSObject new];//创建之后立马就被废弃了
+
+//3\. 自动释放池管理对象
+id __autoreleasing obj = [NSObject new];//就类型[对象 autorelase];的效果
+
+//4\. 类似 __weak，但是不同的是当对象废弃时，修饰的指针变量不会自动赋值为nil，而 __weak会
+id __unsafe_unretained obj = [NSObject new];//创建之后立马就被废弃了
+```
+
+47. ARC下常见的几种产生内存泄漏的情况
+	1. delegate指针变量必须使用weak来修饰，否则会造成循环引用
+	2. Block循环引用
+		1. 可在Block执行的最后一行，进行block=nil 操作来释放block
+		2. block里面引用的对象使用week
+	3. Block的循环引用，必然是两方互相持有，只有一方持有，不会形成
+48. Block分为：全局，栈，堆，三种。在ARC中，默认会对Block进行copy操作，生成堆block
+49. dealloc 方法能做的事情
+	1. 释放strong强引用类型指针(OC对象，CoreFoundataion实例，C结构体实例)
+	2. 移除关注的公知
+	3. 移除KVO实例变量值改变的观察
+50. 不能在dealloc方法内完成的事情
+	1. 调用一步子线程任务，并等待回调时又继续操作其他对象［等掉回调时，很可能这个对象已经废弃掉了。可能会造成崩溃］
+	2. 不要在dealloc方法执行的所在线程上，去执行需要在其他线程（主线程）执行的操作
+	3. 不要在dealloc中调用属性的setter/getter（因为很可能当前对象监听了实例变量的KVO通知，而操作setter就会发出KVO通知，而此时观察的回调对象已经被废弃，所以也会造成程序崩溃）
+51. OC中不建议使用Try{},更建议使用ErrorCode+Bool+NSError的形式
+52. 善用@try-@catch-@finally捕获引发异常的代码段，并在`@catch{} or @finally{} 代码块中，对异常代码段中创建的内存对象进行释放。**系统不会自动释放try中的内容，需要我们自己在finally中释放**
+53. 在不需要持有一个对象的情况下，尽量使用weak引用。注意不要使用assign、unsafe_unretained来修饰Objective-C类对象的指向，会形成野指针导致程序崩溃。
+	1. strong
+		1. 会retain一次传入的新值，表示一个拥有对象的关系
+	2. weak
+		1. 不会retain传入的新值
+		2. 仅仅只是指向传入的对象，想使用对象的方法而已，并不会持有一个对象
+		3. 如果使用id __weak obj = [NSObject new];执行完时对象立马会被废弃，因为无法持有对象
+		4. 当所指对象被释放时，weak指向的指针会由ARC赋值nil，不会造成程序崩溃
+	3. unsafe_unretained
+		1. 基本上类似 weak
+		2. 但是当所指对象释放时，不会由ARC将指针赋值nil
+	4. assign
+		1. 绝大多数情况下，不应该使用这种修饰指针指向对象
+		2. 同 unsafe_unretained 一样，在所指对象废弃时，不会由ARC将指针赋值nil
+	5. copy
+		1. 首先对传入的对象进行拷贝，一般都是浅拷贝，生成一个新的对象
+		2. 然后使用__strong修饰符修饰指针来管理该新对象
+		3. 并对象之前的老对象进行释放release
+		4. 其实很类似__strong，只不过会拷贝出一个新的对象，这就有点问题了 
+	6. autoreleasing 
+		1. 将对象放入到一个pool对象去持有
+		2. 当pool对象废弃掉时，将pool内所有的对象发送release消息
+		3. 通常是为了延迟对一些对象进行释放release消息
+54. 使用autoreleasepool降低内存峰值
+55. 多线程
+	1. `[block]`其实就是一个`[NSBlock]`类簇类的对象，同样具备内存管理
+	2. GCD
+		1. 两种Queue线程队列
+			1. Concurrent Queue 无序并发线程队列
+			2. Serial Queue 顺序多线程同步队列
+		2. 两种Block入队方式
+			1. async 异步执行
+			2. sync 立即等待执行
+	3. NSBlock也是NSObject的子类，它是个类簇类，采用工厂模式，生成最终的对象（堆Block，栈block，全局block）
+		
+		```
+	 static force_inline Class YYNSBlockClass() {
+    static Class cls;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+      //1. 定义一个block，其实得到一个Block对象
+        void (^block)(void) = ^{};
+        //2. block值转换成NSObject对象，获取其所属类
+        cls = ((NSObject *)block).class;
+        //3. 根据其isa指针，一直查找，找到其真实类型
+        while (class_getSuperclass(cls) != [NSObject class]) {
+            cls = class_getSuperclass(cls);
+  	      }
+	    });
+		    return cls;
+		}
+		
+		//输出结果：2016-07-28 00:19:10.498 Demos[6980:83290] NSBlock
+		```
+56. block内部可以访问（捕获）外部的变量，但是不能对外部变量进行修改。
+	1. 但如果Block捕获的是 对象类型 的指针，就会自动对指针指向的对象 发送retain消息 ，也就是会去持有指针指向的对象，让这个对象的retainCount++ 
+		1. 当Block如果是GCD调度执行的Block，那么就会在最终执行完毕的时候，对Block进行释放，从而让Block对象废弃，继而让Block对象持有的对象也执行释放
+		2. 但是当Block对象是属于某个类对象的 实例变量时，如果`[类对象不被废弃]` 或 `[类对象不主动去释放Block对象`]，那么就会让Block对象持有传入内部指针指向对象无法释放，从而导致Block持有的对象内存泄露
+	2. 对于Block对象中传入对象指针时，能让传入对象保持retainCount平衡的关键点:
+		1. 对象指针传入到Block对象持有，在Block对象执行时，Block对象会对传入指针指向的对象 `[retainCount++]`
+		2. 那么必须在Block对象执行完毕或不再使用时，将Block对象废弃掉，从而让Block对象持有的对象 `[retainCount--]`
+57. Block对象的内存结构
+![](media/14712444267383.jpg)
+
+58. 对于Block对象结构中有如下几个重要的东西:
+	1. (1) isa指针，指向block对象的所属类，这个同之前NSObject对象的isa指针是一样的
+	2. (2) invoke函数指针，指向block块内的实现代码
+  `[函数返回值类型 (*函数指针变量名)(void *, 参数1, 参数2, 参数3 ..., 参数n);]`
+  第一个参数是一个 void *类型的指针，这个是第一个必须传递的参数。而这个指针变量参数指向的就是要执行的Block对象。
+59. Block对 外部变量、 外部对象 分别是如何捕获的
+	 1. 对于基本类型变量直接就是拷贝的`[数据]`,而不是`[地址]`
+	 2. `[对于OC对象，拷贝的是地址，而不是数据]`。也就是说Block对象会对外部对象形成一个strong指向，即让外部对象retainCount++。
+	 3. 使用__block
+		 1. 对于基本类型变量，会copy一份内存地址，扔给block，block就可以对其操作了
+60. Block执行完后，如果有持有外部对象，需要对其进行释放，或者week
+61. 小结Block
+	* (1) Block其实是`一个Objetive-C类的一个对象`，和一般的OC类并没有什么区别，分为三类:
+		* Global Block >>> 不操作任何的外部变量
+	   * Stack Block >>> 局部生成的Block，ARC会默认拷贝到`堆`上
+  	   * Malloc Block >>> 在堆上生成的Block对象，需要和一般的NSObject子类对象一样进行内存管理
+	* (2) `NSBlock`是上面三种具体Block类型的`类簇类`
+
+	* (3) 通常`void (^block)() = ^() { ... }` 就是在创建一个`NSBlock`子类的一个对象，既然是创建对象就会`持有`外部传入的对象
+		* 持有 >>> 让被指向的对象 retainCount++
+	* (4) 对于`基本数据`类型，传入Block是传递`数据拷贝`，除非使用`__block`强制传递指针
+
+	* (5) 对于`Objetive-C对象`类型，传入Block的是一份`指针拷贝`，即会对外部对象增加一个strong引用，让被指向的对象 retainCount++
+		* 虽然是指针拷贝，但也是指针，所以即使不加`__block`，也是能够修改外部对象的数据的
+	* (6) 局部创建的Block对象，会在超出范围之后自动被释放，也就会让外部对象的 `retainCount--` 恢复平衡
+
+	* (7) 对象实例变量指向的Block对象，即使超出范围但是不会自动释放，必须要手动的`_block = nil;`进行释放，才能让外部对象的 `retainCount--` 恢复平衡
+
+	* (8) Block对象对外部捕获到的OC对象的retainCount修改:
+		* 对于OC对象被Block内部使用时，让OC对象retainCount++
+ 	   * 当Block对象本身被废弃时，让OC对象retainCount–
+  	   * 而如果Block对象本身不被废弃，那么OC对象就一直不会retainCount–，就意味着OC对象的retainCount只增不减就会出现内存泄漏
+
+62. 但如果一个变量、一个对象、一段代码，将有可能在`[二个及二个以上的不同线程]`上执行`[读写]`，那么此时就必须进行多线程同步处理。如果不进行处理，一般会出现数据的不统一，严重的会出现野指针导致程序崩溃。
+	1. 这个过程中，最主要的原因就是: **CPU随意的切换其他的线程执行任务，导致某一个线程没有完整的执行玩一段逻辑**。
+	2. **解决办法**
+		1. 使用GCD串行队列
+		2. 使用`[@synchronized(对象){操作对象的代码}]`
+			1. 可以直接让括号里面对指定的对象操作的代码，在多线程上顺序执行
+			2. 当进入@synchronized(对象){ ...时，默认会创建一个互斥锁，然后进行锁定，让其他线程在外面等待
+			3. 当出}时解除锁，让其他线程进入
+			4. 优点
+				1. 调用简单
+			5. 缺点
+				1. 全局所有的同步代码块，都使用同一个互斥锁，那么所有的同步代码块都必须按照顺序一个一个执行完毕，就可能造成效率低下
+				2. 当某一个@synchronized(){}块的锁无法解除时，那么其他线程都无法获得锁，也就无法进去执行同步代码块中的代码了，这就是线程死锁的一种
+				3.  可以控制某一次调用的 完整性，但无法控制多次操作之间的 顺序
+		3. 使用NSLock
+			1. `[Lock() lock]`,`[Lock() unlock]`
+		4. 使用`[dispatch sync]` 同步执行，会阻塞当前线程，然后执行block中的任务。
+			1. 优点：
+				1. 立刻能够得到Block执行完之后的返回值（async，是异步，不能立刻得到）
+				2. 不会对Block进行拷贝
+			2. 缺点
+				1. Block是在当前sync操作现场执行的，如果对于一些耗时cpu的代码就不太适合
+		5. `[dispatch_barrier_async]`
+		![](media/14712468677401.jpg)
+
+63. ![](media/14712469137150.jpg)
+64. 构建缓存时选用NSCache而不是NSDictionary
+![](media/14712470757711.jpg)
+
+65. initialize方法与load方法之间的区别
+	1. load方法、+[NSObject load]: 最好不要使用load方法
+		1. 执行该方法时，运行时系统处于脆弱的状态
+		2. 应用程序启动时，首先将工程中所有类的load方法都执行完毕，才会继续做下面的事情
+			1. load方法中，不应该做过多耗时的事情，会影响类的加载速度
+		3. 先执行父类的load方法实现，然后执行当前类的load方法
+		4. 在当前类的load方法中，调用其他类的函数实现是不安全的
+			1. 因为搞不清楚到底哪个类的load方法实现会被先执行
+			2. 如果顺序出现问题，就会导致某个类的一些辅助变量未被初始化导致程序崩溃
+		5. load方法不遵守继承规则。也就是说，一个类写了load实现就调用，如没写load实现就不调用，即不会查找父类中load实现
+		6. 当类也写了load方法，分类也写了load方法，那么有调用顺序:
+			1. 先调用类中的load方法
+			2. 再调用分类中的load方法
+	2. initialize方法 +[NSObject initialize]: 可以完成一些全局状态的变量初始化，但是不到万不得已仍然不要使用此方法完成一些任务
+		1. 在第一次使用该类的时候执行initialize，且只会执行一次。在运行时由系统调用，不能人为的手动调用。
+		2. 只有这个类被使用（加载）的时刻才会去执行initialize，否则永远都不会被执行
+		3. initialize方法执行时，运行期系统处于正常状态
+			1. 也就是说可以随意的调用其他类的方法实现
+		4. initialize方法是绝对处于线程安全的环境下执行
+			1. 在当前initialize方法中，操作的其他类或对象都是处于线程阻塞下执行，不会出现多个线程同时执行initialize方法实现
+			2. 一直等待initialize方法方法对这些类或对象操作完毕，才会放行其他的initialize方法实现
+		5. 当前类如果没有写initialize方法，就会去父类查找执行initialize方法实现，也即是说具备继承规则 
+		6. initialize方法中，最好不要调用其他类的方法，甚至当前类自己的方法
+66. 看到一个实现单例的最佳写法，来源于苹果官方文档建议写法，保证copy拷贝出来的仍然是单例对象
+	**可以看到，主要区别是`[allocWithZone:]`中间也用了dispatch_once,这样，保证了空间只会分配一次，所以，不管我们使用`[[Tool alloc] init]`还是`[Tool sharedInstance]`都会返回同一个对象**
+![](media/14712474975396.jpg)
+![](media/14712475948148.jpg)
+
+67. 进而，我们可以将上面的代码写成通用的宏
+ ![](media/14712478090355.jpg)
+![](media/14712478435953.jpg)
+
+68. NSTimer对象会retain目标对象，并且不会自动对目标对象执行release，就会造成目标对象内存泄露
+	1. 我们需要在停止NSTimer的时候
+	
+	```
+	[_timer invalidate];
+	_timer = nil;
+	```
+
+
+
 
