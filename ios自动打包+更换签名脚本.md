@@ -109,5 +109,6 @@ Export_Path="$Path/$IPA_Name.ipa"
 
 rm -rf $Build_Directory && \
 # 将生成的文件，上传到fir分发网站 -T：后面的是api的token，验证你的身份。使用这个之前，必须先安装fir的命令行工具： $ sudo gem install fir-cli --no-ri --no-rdoc
-fir p $Export_Path -T 234sdfasd9sdfo239s
+fir p $Export_Path -T ***********
 ```
+

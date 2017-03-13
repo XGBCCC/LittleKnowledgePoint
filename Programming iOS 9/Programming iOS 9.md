@@ -4,7 +4,7 @@
 1. 当一个ViewController刚被实例化的时候，它是没有view的。ViewController是个小且轻量的对象；View因为包含了界面元素，会占据内存，是相对重的对象。因此一个ViewController会把获得view的时间尽量推迟，也就是访问view属性的时候，才lazy initialize
 2. 如果我们需要自定义ViewController的View的话，需要重写loadView方法［注意，此处不要掉用super］
 3. ViewController默认的init方法，会自动掉用查找同名的nib，来进行加载，所有如果名字相同，我们可以直接使用：`[let vc = RootViewController()]` 就可以直接从nib来加载VC了
-4. ViewController旋转后事件的掉用顺序
+4. ViewController旋转后事件的调用顺序
 	1. willTransitionToTraitCollection:withTransitionCoordinator:
 	2. viewWillTransitionToSize:withTransitionCoordinator:
 	3. updateViewConstraints
@@ -15,7 +15,7 @@
 	1. layout适合放在viewDidLoad
 	2. 具体的frame尽量不要放在didLoad中，因为此时self.view还没有对应的尺寸
 	3. 布局，约束也需要变的话，可以放在viewWillLayoutSubviews:里
-6. UINavigation可以直接掉用hidesBarOnTap,hidesBarONSwipe等方法来设置bar自动隐藏
+6. UINavigation可以直接调用hidesBarOnTap,hidesBarONSwipe等方法来设置bar自动隐藏
 7. 有时我们会需要修改tableview的contentInset，设置一定量的偏移，但是这个时候，我们会发现右边的滚动条，却出卖了我们，这时，我们可以用这个属性`[scrollIndicatorInsets]`将其设置为痛contentInset一样即可，这样我们的滚动条就也OK了
 8. tableViewCell，如何支持自定义的操作（例如，系统自带的支持delete），在`[editactionsForRowAtIndexPath]`代理中返回相应的`[TableViewRowAction]`即可
 9. UITableView如何移动Cell

@@ -34,7 +34,7 @@
 			1. 类似weak，但区别是，在指向的对象被废弃的时候，指针变量值不会自动赋值为nil
 			2. 而weak的指针变量会自动赋值nil
 		4. unsafe_unretaind:类似于assign，但是一般用于OC对象
-			1. 同样喝assign在指向的对象被废弃掉时，指针变量不会自动赋值为nil
+			1. 同样和assign在指向的对象被废弃掉时，指针变量不会自动赋值为nil
 		5. copy：将传入的对象进行copy([对象 copy]),然后使用strong／retain强引用的方式来持有拷贝出来的新对象
 			1. 新对象 ＝ [老对象 copy]; //和strong/retain不同的地方
 			2. 持有传入的新对象,新对象retainCount++
@@ -62,8 +62,8 @@
 	2. 使用self.variable 来些数据，可以遵循内存管理修饰＋KVO
 	3. 在init＋dealoc中，总是应该使用_variable来读写
 		1. 因为子类可能重写属性的setter于getter方法的实现［我们使用_variable可确保我们的值赋予的是正确的］
-		2. 如果重写setter了，在掉用setter饿时候，会导致父类方法中的某一实例变量未能初始化，导致程序崩溃
-		3. 又懒加载的，要一直使用self.属性名来读取
+		2. 如果重写setter了，在调用setter的时候，会导致父类方法中的某一实例变量未能初始化，导致程序崩溃
+		3. 有懒加载的，要一直使用self.属性名来读取
 12. 如何判断两个对象的等同性
 	1. 我们不能通过`[A对象 == B对象]`，因为这样直接比较的是对象的地址，而不是对象内部实例的值内容
 	2. 等同性，我们需要重写`[isEqual]`方法来实现,方法内部，我们可以随意对比属性的值，来返回YES，NO
@@ -144,12 +144,12 @@
 		| 关联对象指定的内存策略 | 等效的@property修饰符 |
 | :-: | :-: |
 | `OBJC_ASSOCIATION_ASSIGN` | @property (atomic, assign) |
-| `OBJC_ASSOCIATION_RETAIN_NONATOMIC` | @property (nonatimic , retain) |
-| `OBJC_ASSOCIATION_COPY_NONATOMIC` | @property (nonatimic , copy) |
+| `OBJC_ASSOCIATION_RETAIN_NONATOMIC` | @property (nonatomic , retain) |
+| `OBJC_ASSOCIATION_COPY_NONATOMIC` | @property (nonatomic , copy) |
 | `OBJC_ASSOCIATION_RETAIN` | @property (atomic , retain) |
 | `OBJC_ASSOCIATION_COPY` | @property (atomic , copy) |
 
-18. UIView不接受触摸事件的4种情况`[view.userInteractionEnable = NO]`,`[view.hideen = YES]`,`[view.alpha = 0.0~0.01]`,`[父view，或自己的frame是CGRectZero]`
+18. UIView不接受触摸事件的4种情况`[view.userInteractionEnable = NO]`,`[view.hidden = YES]`,`[view.alpha = 0.0~0.01]`,`[父view，或自己的frame是CGRectZero]`
 19. `[UIView hitTest:WithEvent:]`源码的模拟实现
 
 ```
@@ -186,7 +186,7 @@
 
 20. 系统会先调用`[hitTest]`方法，然后才调用`[touchBegin]`。 因为需要先确认是哪个View接受事件，然后才能相应识别touchBegin
 21. 事件传递过程
-	1. 首先从super view还是，然后传递给所有的subviews尝试响应
+	1. 首先从super view开始，然后传递给所有的subviews尝试响应
 	2. 一个View调用hitTest开始尝试事件响应，而掉用pointInside看是否能够处理这个坐标的事件
 	3. 如果可以处理，就判断是否还有subViews
 		1. 如果没有，则自己作为事件响应者返回
@@ -276,7 +276,7 @@ struct objc_class {
 
 ```
 
-36. OC的代码，在编译期间会将OC代码自动转换为C的代码，并在程序运行起降，创建出对应的C结构体实例，即：objc_class
+36. OC的代码，在编译期间会将OC代码自动转换为C的代码，并在程序运行期间，创建出对应的C结构体实例，即：objc_class
 37. 实例－>isa->obj_class->isa->meta Class->isa->NSObject
 38. 我们写的一个Objective－C实际上包含了两部分`[类本身]`,`[元类]` 
 39. 如何判断两个对象的类型[]是否一致？＝> `[[person class] == [Person class]]` **类簇不能这么比，只能用isKindOf**
