@@ -16,7 +16,7 @@
     // Do any additional setup after loading the view, typically from a nib.
     
     //先导入证书
-    NSString * cerPath = @""; //证书的路径
+    NSString * cerPath = @""; //证书的路径 crt格式的
     NSData * cerData = [NSData dataWithContentsOfFile:cerPath];
     SecCertificateRef certificate = SecCertificateCreateWithData(NULL, (__bridge CFDataRef)(cerData));
     self.trustedCertificates = @[CFBridgingRelease(certificate)];
@@ -32,32 +32,125 @@
     
 }
 
-- (void)URLSession:(NSURLSession *)session didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential * _Nullable))completionHandler{
+- (void)URLSession:(NSURLSession *)session didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential * _Nullable))completionHandler {
     
-    //1)获取trust object
-    SecTrustRef trust = challenge.protectionSpace.serverTrust;
-    SecTrustResultType result;
-    
-    //注意：这里将之前导入的证书设置成下面验证的Trust Object的anchor certificate
-    SecTrustSetAnchorCertificates(trust, (__bridge CFArrayRef)self.trustedCertificates);
-    
-    //2)SecTrustEvaluate会查找前面SecTrustSetAnchorCertificates设置的证书或者系统默认提供的证书，对trust进行验证
-    OSStatus status = SecTrustEvaluate(trust, &result);
-    if (status == errSecSuccess &&
-        (result == kSecTrustResultProceed ||
-         result == kSecTrustResultUnspecified)) {
+    //客户端验证服务端提供的证书
+    if([challenge.protectionSpace.authenticationMethod isEqualToString:NSURLAuthenticationMethodServerTrust]){
+        
+        
+        NSURLSessionAuthChallengeDisposition disposition = NSURLSessionAuthChallengePerformDefaultHandling;
+        NSURLCredential *credential = nil;
+        
+        //将读取的证书设置为serverTrust的根证书
+        NSString *hostName = challenge.protectionSpace.host;
+        NSData *cerData = [[RNXNetworkHostAuthenticationManager sharedInstance] certificationDataWithHostName:hostName forAuthenticationType:RNXNetworkAuthenticationTypeForService];
+        
+        //如果发现本地证书，则验证。没有则使用系统默认的：NSURLSessionAuthChallengePerformDefaultHandling
+        if(cerData){
             
-            //3)验证成功，生成NSURLCredential凭证cred，告知challenge的sender使用这个凭证来继续连接
-            NSURLCredential *cred = [NSURLCredential credentialForTrust:trust];
-            [challenge.sender useCredential:cred forAuthenticationChallenge:challenge];
+            OSStatus err;
+            SecTrustResultType trustResult = kSecTrustResultInvalid;
             
-        } else {
+            //获取服务器的trust object
+            SecTrustRef serverTrust = challenge.protectionSpace.serverTrust;
+            //导入本地证书
+            SecCertificateRef localSecCertificate = SecCertificateCreateWithData(NULL, (__bridge CFDataRef)(cerData));
+            err = SecTrustSetAnchorCertificates(serverTrust, (__bridge CFArrayRef)@[(__bridge id)localSecCertificate]);
             
-            //5)验证失败，取消这次验证流程
-            [challenge.sender cancelAuthenticationChallenge:challenge];
+            if(err == noErr){
+                err = SecTrustEvaluate(serverTrust, &trustResult);
+            }
+            
+            if (err == errSecSuccess && trustResult == kSecTrustResultProceed){
+                //认证成功，则创建一个凭证返回给服务器
+                disposition = NSURLSessionAuthChallengeUseCredential;
+                credential = [NSURLCredential credentialForTrust:serverTrust];
+            }
+            else{
+                disposition = NSURLSessionAuthChallengeCancelAuthenticationChallenge;
+            }
+            CFRelease(localSecCertificate);
             
         }
+        //回调凭证，传递给服务器
+        if(completionHandler){
+            completionHandler(disposition, credential);
+        }
+    }
+    //服务器要验证客户端的证书
+    if([challenge.protectionSpace.authenticationMethod isEqualToString:NSURLAuthenticationMethodClientCertificate]){
+        
+        //获取p12的data
+        NSString *hostName = challenge.protectionSpace.host;
+        NSData *cerData = [[RNXNetworkHostAuthenticationManager sharedInstance] certificationDataWithHostName:hostName forAuthenticationType:RNXNetworkAuthenticationTypeForClientCertificate];
+        NSString *password = [[RNXNetworkHostAuthenticationManager sharedInstance] passwordWithHostName:hostName];
+        
+        NSURLCredential *credential = [RNXCredentialUtil credentialWithP12Data:cerData andPassword:password];
+        if (credential) {
+            completionHandler(NSURLSessionAuthChallengeUseCredential, credential);
+        }else{
+            completionHandler(NSURLSessionAuthChallengeCancelAuthenticationChallenge, nil);
+        }
+    }
+    
 }
+
++ (NSURLCredential *)credentialWithP12Data:(NSData *)p12Data andPassword:(NSString *)password{
+    
+    CFDataRef inP12data = (__bridge CFDataRef)p12Data;
+    
+    SecIdentityRef myIdentity;
+    SecTrustRef myTrust;
+    OSStatus status = extractIdentityAndTrust(inP12data, &myIdentity, &myTrust, password);
+    
+    if (status != errSecSuccess || myIdentity == nil) {
+        NSLog(@"提取identity与trust失败：%@", @(status));
+        return nil;
+    }
+    SecCertificateRef myCertificate;
+    SecIdentityCopyCertificate(myIdentity, &myCertificate);
+    
+    const void *certs[] = { myCertificate };
+    CFArrayRef certsArray = CFArrayCreate(NULL, certs, 1, NULL);
+    
+    
+    NSURLCredential *credential = [[NSURLCredential alloc] initWithIdentity:myIdentity certificates:(__bridge NSArray*)certsArray persistence:NSURLCredentialPersistenceForSession];
+    
+    CFRelease(myCertificate);
+    CFRelease(certsArray);
+    
+    return credential;
+}
+
+OSStatus extractIdentityAndTrust(CFDataRef inP12data, SecIdentityRef *identity, SecTrustRef *trust,NSString *password) {
+    OSStatus securityError = errSecSuccess;
+    
+    CFStringRef pwd = (__bridge CFStringRef) password;
+    const void *keys[] = { kSecImportExportPassphrase };
+    const void *values[] = { pwd };
+    
+    CFDictionaryRef options = CFDictionaryCreate(NULL, keys, values, 1, NULL, NULL);
+    
+    CFArrayRef p12Items = (__bridge CFArrayRef)(CFBridgingRelease(CFArrayCreate(NULL, 0, 0, NULL)));
+    securityError = SecPKCS12Import(inP12data, options, &p12Items);
+    
+    if (securityError == 0) {
+        CFDictionaryRef myIdentityAndTrust = CFArrayGetValueAtIndex(p12Items, 0);
+        const void *tempIdentity = NULL;
+        tempIdentity = CFDictionaryGetValue(myIdentityAndTrust, kSecImportItemIdentity);
+        *identity = (SecIdentityRef)tempIdentity;
+        const void *tempTrust = NULL;
+        tempTrust = CFDictionaryGetValue(myIdentityAndTrust, kSecImportItemTrust);
+        *trust = (SecTrustRef)tempTrust;
+    }
+    CFRelease(options);
+    
+    return securityError;
+}
+
+
+
+
 ```
 
 
